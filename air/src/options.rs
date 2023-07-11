@@ -3,27 +3,17 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+use crate::errors::ProofError;
+use crate::{
+    FRI_MAX_FOLDING_FACTOR, FRI_MAX_REMAINDER_DEGREE, FRI_MIN_FOLDING_FACTOR, MAX_BLOWUP_FACTOR,
+    MAX_GRINDING_FACTOR, MAX_NUM_QUERIES, MIN_BLOWUP_FACTOR,
+};
+
 use fri::FriOptions;
 use math::{StarkField, ToElements};
 use utils::{
     collections::Vec, ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable,
 };
-
-// CONSTANTS
-// ================================================================================================
-
-// most of these constants are set so that values fit into a u8 integer.
-
-const MAX_NUM_QUERIES: usize = 255;
-
-const MIN_BLOWUP_FACTOR: usize = 2;
-const MAX_BLOWUP_FACTOR: usize = 128;
-
-const MAX_GRINDING_FACTOR: u32 = 32;
-
-const FRI_MIN_FOLDING_FACTOR: usize = 2;
-const FRI_MAX_FOLDING_FACTOR: usize = 16;
-const FRI_MAX_REMAINDER_DEGREE: usize = 255;
 
 // TYPES AND INTERFACES
 // ================================================================================================
@@ -95,7 +85,7 @@ impl ProofOptions {
     /// The smallest allowed blowup factor for a given computation is derived from degrees of
     /// constraints defined for that computation and may be greater than 2. But no computation may
     /// have a blowup factor smaller than 2.
-    pub const MIN_BLOWUP_FACTOR: usize = MIN_BLOWUP_FACTOR;
+    pub const MIN_BLOWUP_FACTOR: usize = 2;
 
     // CONSTRUCTORS
     // --------------------------------------------------------------------------------------------
@@ -116,38 +106,17 @@ impl ProofOptions {
         field_extension: FieldExtension,
         fri_folding_factor: usize,
         fri_remainder_max_degree: usize,
-    ) -> ProofOptions {
-        // TODO: return errors instead of panicking
-        assert!(num_queries > 0, "number of queries must be greater than 0");
-        assert!(num_queries <= MAX_NUM_QUERIES, "number of queries cannot be greater than {MAX_NUM_QUERIES}");
+    ) -> Result<ProofOptions, ProofError> {
+        validate_input_parameters(num_queries, blowup_factor, grinding_factor, fri_folding_factor, fri_remainder_max_degree)?;
 
-        assert!(blowup_factor.is_power_of_two(), "blowup factor must be a power of 2");
-        assert!(blowup_factor >= MIN_BLOWUP_FACTOR, "blowup factor cannot be smaller than {MIN_BLOWUP_FACTOR}");
-        assert!(blowup_factor <= MAX_BLOWUP_FACTOR, "blowup factor cannot be greater than {MAX_BLOWUP_FACTOR}");
-
-        assert!(grinding_factor <= MAX_GRINDING_FACTOR, "grinding factor cannot be greater than {MAX_GRINDING_FACTOR}");
-
-        assert!(fri_folding_factor.is_power_of_two(), "FRI folding factor must be a power of 2");
-        assert!(fri_folding_factor >= FRI_MIN_FOLDING_FACTOR, "FRI folding factor cannot be smaller than {FRI_MIN_FOLDING_FACTOR}");
-        assert!(fri_folding_factor <= FRI_MAX_FOLDING_FACTOR, "FRI folding factor cannot be greater than {FRI_MAX_FOLDING_FACTOR}");
-
-        assert!(
-            (fri_remainder_max_degree + 1).is_power_of_two(),
-            "FRI polynomial remainder degree must be one less than a power of two"
-        );
-        assert!(
-            fri_remainder_max_degree <= FRI_MAX_REMAINDER_DEGREE,
-            "FRI polynomial remainder degree cannot be greater than {FRI_MAX_REMAINDER_DEGREE}"
-        );
-
-        ProofOptions {
+        Ok(ProofOptions {
             num_queries: num_queries as u8,
             blowup_factor: blowup_factor as u8,
             grinding_factor: grinding_factor as u8,
             field_extension,
             fri_folding_factor: fri_folding_factor as u8,
             fri_remainder_max_degree: fri_remainder_max_degree as u8,
-        }
+        })
     }
 
     // PUBLIC ACCESSORS
@@ -242,15 +211,67 @@ impl Deserializable for ProofOptions {
     /// # Errors
     /// Returns an error of a valid proof options could not be read from the specified `source`.
     fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
-        Ok(ProofOptions::new(
-            source.read_u8()? as usize,
-            source.read_u8()? as usize,
-            source.read_u8()? as u32,
-            FieldExtension::read_from(source)?,
-            source.read_u8()? as usize,
-            source.read_u8()? as usize,
-        ))
+        let num_queries = source.read_u8()? as usize;
+        let blowup_factor = source.read_u8()? as usize;
+        let grinding_factor = source.read_u8()? as u32;
+        let field_extension = FieldExtension::read_from(source)?;
+        let fri_folding_factor = source.read_u8()? as usize;
+        let fri_remainder_max_degree = source.read_u8()? as usize;
+        ProofOptions::new(
+            num_queries,
+            blowup_factor,
+            grinding_factor,
+            field_extension,
+            fri_folding_factor,
+            fri_remainder_max_degree,
+        )
+        .map_err(|err| DeserializationError::UnknownError(err.to_string()))
     }
+}
+
+// HELPER FUNCTIONS
+// ================================================================================================
+
+/// Checks the validity of the provided input data. 
+fn validate_input_parameters(
+    num_queries: usize,
+    blowup_factor: usize,
+    grinding_factor: u32,
+    fri_folding_factor: usize,
+    fri_remainder_max_degree: usize,
+) -> Result<(), ProofError> {
+    // Checks that number of queries is contained in the required range.
+    if !(1..MAX_NUM_QUERIES + 1).contains(&num_queries) {
+        return Err(ProofError::QueriesNumber(num_queries));
+    }
+
+    // Checks that blowup factor is a power of two and contained in the required range.
+    if !blowup_factor.is_power_of_two()
+        || !(MIN_BLOWUP_FACTOR..MAX_BLOWUP_FACTOR + 1).contains(&blowup_factor)
+    {
+        return Err(ProofError::BlowupFactor(blowup_factor));
+    }
+
+    // Checks that grinding factor is smaller than required value.
+    if grinding_factor > MAX_GRINDING_FACTOR {
+        return Err(ProofError::GrindingFactor(grinding_factor));
+    }
+
+    // Checks that FRI folding factor is a power of two and contained in the required range.
+    if !fri_folding_factor.is_power_of_two()
+        || !(FRI_MIN_FOLDING_FACTOR..FRI_MAX_FOLDING_FACTOR + 1).contains(&fri_folding_factor)
+    {
+        return Err(ProofError::FoldingFactor(fri_folding_factor));
+    }
+
+    // Checks that FRI polynomial remainder degree is one less than a power of two and smaller than
+    // required value.
+    if !(fri_remainder_max_degree + 1).is_power_of_two()
+        || fri_remainder_max_degree > FRI_MAX_REMAINDER_DEGREE
+    {
+        return Err(ProofError::FriRemainder(fri_remainder_max_degree));
+    }
+    Ok(())
 }
 
 // FIELD EXTENSION IMPLEMENTATION
@@ -330,7 +351,8 @@ mod tests {
             field_extension,
             fri_folding_factor as usize,
             fri_remainder_max_degree as usize,
-        );
+        )
+        .unwrap();
         assert_eq!(expected, options.to_elements());
     }
 }

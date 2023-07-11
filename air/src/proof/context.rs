@@ -267,7 +267,8 @@ mod tests {
             field_extension,
             fri_folding_factor as usize,
             fri_remainder_max_degree as usize,
-        );
+        )
+        .unwrap();
         let layout = TraceLayout::new(
             main_width as usize,
             [aux_width as usize],

@@ -36,7 +36,7 @@ extern crate alloc;
 pub mod proof;
 
 mod errors;
-pub use errors::AssertionError;
+pub use errors::{AssertionError, ProofError};
 
 mod options;
 pub use options::{FieldExtension, ProofOptions};
@@ -48,3 +48,19 @@ pub use air::{
     DeepCompositionCoefficients, EvaluationFrame, TraceInfo, TraceLayout,
     TransitionConstraintDegree, TransitionConstraints,
 };
+
+// CONSTANTS
+// ================================================================================================
+
+// most of these constants are set so that values fit into a u8 integer.
+
+pub const MAX_NUM_QUERIES: usize = 255;
+
+pub const MIN_BLOWUP_FACTOR: usize = 2;
+pub const MAX_BLOWUP_FACTOR: usize = 128;
+
+pub const MAX_GRINDING_FACTOR: u32 = 32;
+
+pub const FRI_MIN_FOLDING_FACTOR: usize = 2;
+pub const FRI_MAX_FOLDING_FACTOR: usize = 16;
+pub const FRI_MAX_REMAINDER_DEGREE: usize = 255;

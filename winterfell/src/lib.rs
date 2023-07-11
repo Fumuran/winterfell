@@ -488,7 +488,7 @@
 //!     FieldExtension::None,
 //!     8,  // FRI folding factor
 //!     31, // FRI max remainder polynomial degree
-//! );
+//! ).expect("Invalid parameters for the proof options");
 //!
 //! // Instantiate the prover and generate the proof.
 //! let prover = WorkProver::new(options);

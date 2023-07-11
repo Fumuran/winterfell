@@ -100,7 +100,8 @@ impl ExampleOptions {
                 field_extension,
                 self.folding_factor,
                 31,
-            ),
+            )
+            .expect("Invalid parameters for the proof options"),
             hash_fn,
         )
     }
